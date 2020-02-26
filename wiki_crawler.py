@@ -14,10 +14,9 @@ class Settings:
     wiki_link = r'https://en.wikipedia.org'
 
     # for windows
-    # path_dir = r'C:\Python\Projects\Testing\Data'
+    path_dir = r'C:\Python\Projects\WikiCrawler\data'
     # for linux
-    path_dir = r'/home/admin/WikiCrawler/data'
-
+    # path_dir = r'/home/admin/WikiCrawler/data'
 
     content_file = r'data'
 
@@ -68,10 +67,10 @@ class WikiCrawler:
         self.link = '' # type: str
 
         # Set of unique links
-        self.unique_links = set([]) # type: set
+        self.unique_links = set() # type: set
 
         # contains already used, clicked links from unique set
-        self.used_links = [] # type: List[str, str, ...]
+        self.used_links = set() # type: set
 
         # contains content got from each unique link
         self.content = [] # type: List[str, str, ...]
@@ -98,9 +97,9 @@ class WikiCrawler:
 
         else:
             self.used_links = self.file_handler.open_links(
-                Settings.filepath_used_links, "used")
+                Settings.filepath_used_links)
             self.unique_links = self.file_handler.open_links(
-                Settings.filepath_unique_links, "unique")
+                Settings.filepath_unique_links)
             Settings.starting_link = None
             self.link = self.unique_links.pop()
 
@@ -108,7 +107,7 @@ class WikiCrawler:
         self.page = requests.get(
             f'{Settings.wiki_link}{self.link}' if not Settings.starting_link
             else Settings.starting_link)
-        if Settings.starting_link is not None: self.used_links.append(Settings.starting_link)
+        if Settings.starting_link is not None: self.used_links.add(Settings.starting_link)
         Settings.starting_link = None
 
     def collect_unique_links(self):
@@ -137,7 +136,7 @@ class WikiCrawler:
             self.get_wiki_page()
             self.collect_unique_links()
             self.get_content_from_page()
-            self.used_links.append(self.link)
+            self.used_links.add(self.link)
 
             if len(self.used_links) % 10 == 0:
                 logger.info(f'{len(self.used_links)} links used...')
@@ -171,21 +170,14 @@ class FileHandler:
         df.to_csv(path, index=False)
         logger.info(f'{len(links)} used Links saved to: {repr(path)}.')
 
-    def open_links(self, filepath_links, cond="unique"):
+    def open_links(self, filepath_links):
         df = pd.read_csv(filepath_links)
-        if cond == "unique":
-            links = set(df['Links'].values)
-            logger.info(f'File with {repr(cond)} links opened. '
-                        f'{len(links)} links from: {repr(filepath_links)}.')
-            return links
-        elif cond == "used":
-            links = df['Links'].values.tolist()
-            logger.info(f'File with {repr(cond)} links opened. '
-                        f'{len(links)} links from: {repr(filepath_links)}.')
-            return links
+        links = set(df['Links'].values)
+        logger.info(f'{len(links)} links opened from: {repr(filepath_links)}.')
+        return links
 
     def write_content(self, content):
-        logger.info(f'Content saved. {len(content)} Lines to {Settings.content_file}')
+        logger.info(f'Content saved. {len(content)} Lines to {repr(Settings.content_file)}')
         for line in content:
             app_log.info(line)
 
@@ -196,13 +188,14 @@ class Timing(WikiCrawler):
     pass
 
 
-def get_logger():
+def get_logger(logger, app_log, logger_level=logging.INFO, app_log_level=logging.INFO):
     app_log_path = os.path.join(Settings.path_dir, Settings.content_file)
+    if not os.path.exists(app_log_path):
+        os.makedirs(Settings.path_dir)
 
     my_handler = RotatingFileHandler(app_log_path, mode='a', maxBytes=Settings.content_file_size,
                                      encoding='utf-8', backupCount=Settings.backupcount)
-    my_handler.setLevel(logging.INFO)
-    app_log.setLevel(logging.INFO)
+    app_log.setLevel(app_log_level)
     app_log.addHandler(my_handler)
 
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -210,12 +203,9 @@ def get_logger():
     fh = logging.FileHandler('Info.log')
 
     sh.setFormatter(formatter)
-
-    logger.setLevel(logging.INFO)
-
+    logger.setLevel(logger_level)
     logger.addHandler(sh)
     logger.addHandler(fh)
-    return logger, app_log
 
 
 def run_script():
@@ -233,5 +223,5 @@ def run_script():
         file_hanler.write_content(inst.content)
 
 if __name__ == "__main__":
-    logger, app_log = get_logger()
+    get_logger(logger, app_log)
     run_script()
