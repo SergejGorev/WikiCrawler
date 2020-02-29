@@ -6,6 +6,12 @@ from typing import List
 import logging
 from logging.handlers import RotatingFileHandler
 
+from multiprocessing import Process, Pool
+
+import time
+
+
+
 logger = logging.getLogger('Info')
 app_log = logging.getLogger('ContentWriter')
 
@@ -37,10 +43,10 @@ class Settings:
 
 
     # maximum_links = float('inf')
-    maximum_links = 20
+    maximum_links = 100
 
     # how many pages with content to store in memory until it is dumped to file
-    pages_in_memory = 20
+    pages_in_memory = 100
 
     # save unique links after limit has been reached
     unique_links_in_memory = 100_000
@@ -58,8 +64,7 @@ class WikiCrawler:
     text_section = SoupStrainer('p')
 
     def __init__(self):
-        # self.app_log = None # type: # None|logging
-
+        # super().__init__()
         # Response object, page from wikipedia, for each link separately
         self.page = None # type: None|requests.models.Response
 
@@ -80,15 +85,13 @@ class WikiCrawler:
 
         logger.info(f'Working in {repr(WikiCrawler.__name__)}')
 
-        self.check_if_links_saved_in_files()
-        self.get_wiki_page()
-        self.collect_unique_links()
-        self.get_content_from_page()
-
-        self.link_engine()
+        self._check_if_links_saved_in_files()
+        self._get_wiki_page()
+        self._collect_unique_links()
+        self._get_content_from_page()
 
 
-    def check_if_links_saved_in_files(self):
+    def _check_if_links_saved_in_files(self):
         if not os.path.isfile(Settings.filepath_used_links) \
                 or not os.path.isfile(Settings.filepath_unique_links):
 
@@ -103,15 +106,15 @@ class WikiCrawler:
             Settings.starting_link = None
             self.link = self.unique_links.pop()
 
-    def get_wiki_page(self):
+    def _get_wiki_page(self):
         self.page = requests.get(
             f'{Settings.wiki_link}{self.link}' if not Settings.starting_link
             else Settings.starting_link)
         if Settings.starting_link is not None: self.used_links.add(Settings.starting_link)
         Settings.starting_link = None
 
-    def collect_unique_links(self):
-        soup = self.get_soup(parse_only=self.links_only)
+    def _collect_unique_links(self):
+        soup = self._get_soup(parse_only=self.links_only)
         for line in soup.children:
             match1 = Settings.wiki.findall(str(line))
             match2 = Settings.colon.findall(str(line))
@@ -125,17 +128,17 @@ class WikiCrawler:
                 if line['href'] not in self.used_links:
                     self.unique_links.add(line['href'])
 
-    def get_content_from_page(self):
-        soup = self.get_soup(parse_only=self.text_section)
+    def _get_content_from_page(self):
+        soup = self._get_soup(parse_only=self.text_section)
         for line in soup.children:
             self.content.append(line.get_text())
 
-    def link_engine(self):
+    def _link_engine(self):
         while len(self.used_links) <= Settings.maximum_links:
             self.link = self.unique_links.pop()
-            self.get_wiki_page()
-            self.collect_unique_links()
-            self.get_content_from_page()
+            self._get_wiki_page()
+            self._collect_unique_links()
+            self._get_content_from_page()
             self.used_links.add(self.link)
 
             if len(self.used_links) % 10 == 0:
@@ -155,7 +158,13 @@ class WikiCrawler:
             self.file_handler.save_links(self.unique_links, Settings.filepath_unique_links)
             self.file_handler.save_links(self.used_links, Settings.filepath_used_links)
 
-    def get_soup(self, parse_only):
+    def multi_process_pool(self):
+        cores = os.cpu_count()
+        with Pool(processes=cores) as pool:
+            pool.apply_async(self._link_engine())
+            # [pool.apply_async(self._link_engine) for i in range(4)]
+
+    def _get_soup(self, parse_only):
         return BeautifulSoup(self.page.content, 'html.parser',
                              parse_only=parse_only)
 
@@ -213,6 +222,7 @@ def run_script():
     try:
         logger.info('Starting Script')
         inst = WikiCrawler()
+        inst.multi_process_pool()
         logger.info('Script finisched')
     except:
         logger.error('Something went WRONG!')
@@ -223,5 +233,12 @@ def run_script():
         file_hanler.write_content(inst.content)
 
 if __name__ == "__main__":
+
+    start = time.time()
+
     get_logger(logger, app_log)
     run_script()
+
+    end = time.time()
+
+    print(f'{end - start} seconds needed.')
