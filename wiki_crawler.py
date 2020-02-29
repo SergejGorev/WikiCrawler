@@ -162,7 +162,7 @@ class WikiCrawler:
         cores = os.cpu_count()
         with Pool(processes=cores) as pool:
             pool.apply_async(self._link_engine())
-            # [pool.apply_async(self._link_engine) for i in range(4)]
+
 
     def _get_soup(self, parse_only):
         return BeautifulSoup(self.page.content, 'html.parser',
