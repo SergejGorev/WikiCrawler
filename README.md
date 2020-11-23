@@ -1,0 +1,3 @@
+# WikiCrawler - nothing speciall
+
+### just runs over all links from wikipages and saves bunch of text... No idea if anyone needs it...
